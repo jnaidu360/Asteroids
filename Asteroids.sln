@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.13.35913.81 d17.13
+VisualStudioVersion = 17.13.35913.81
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Asteroids", "Asteroids\Asteroids.vcxproj", "{D00FFEFC-583D-4FEF-AB41-A6776CB1061D}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ECSLib", "ECSLib\ECSLib.vcxproj", "{CF094251-4E2D-48C7-9625-2EF65360CB93}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,14 @@ Global
 		{D00FFEFC-583D-4FEF-AB41-A6776CB1061D}.Release|x64.Build.0 = Release|x64
 		{D00FFEFC-583D-4FEF-AB41-A6776CB1061D}.Release|x86.ActiveCfg = Release|Win32
 		{D00FFEFC-583D-4FEF-AB41-A6776CB1061D}.Release|x86.Build.0 = Release|Win32
+		{CF094251-4E2D-48C7-9625-2EF65360CB93}.Debug|x64.ActiveCfg = Debug|x64
+		{CF094251-4E2D-48C7-9625-2EF65360CB93}.Debug|x64.Build.0 = Debug|x64
+		{CF094251-4E2D-48C7-9625-2EF65360CB93}.Debug|x86.ActiveCfg = Debug|Win32
+		{CF094251-4E2D-48C7-9625-2EF65360CB93}.Debug|x86.Build.0 = Debug|Win32
+		{CF094251-4E2D-48C7-9625-2EF65360CB93}.Release|x64.ActiveCfg = Release|x64
+		{CF094251-4E2D-48C7-9625-2EF65360CB93}.Release|x64.Build.0 = Release|x64
+		{CF094251-4E2D-48C7-9625-2EF65360CB93}.Release|x86.ActiveCfg = Release|Win32
+		{CF094251-4E2D-48C7-9625-2EF65360CB93}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
