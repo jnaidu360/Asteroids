@@ -1,6 +1,7 @@
 #include "SDL3/SDL.h"
 #include "SDL3_image/SDL_image.h"
 #include "ECSLib.h"
+#include <numbers>
 
 struct Vector2 {
 	Vector2() {
@@ -97,58 +98,70 @@ struct SDLton : Singleton {
 		}
 		else
 		{
-			//Create window
-			gWindow = SDL_CreateWindow("Asteroids", SCREEN_WIDTH, SCREEN_HEIGHT,SDL_WINDOW_RESIZABLE);
-			if (gWindow == NULL)
-			{
-				printf("Window could not be created! SDL Error: %s\n", SDL_GetError());
-				success = false;
-			}
-			else
-			{
-				//Create vsynced renderer for window
-				gRenderer = SDL_CreateRenderer(gWindow, NULL);
-				if (gRenderer == NULL)
-				{
-					printf("Renderer could not be created! SDL Error: %s\n", SDL_GetError());
-					success = false;
-				}
-				else
-				{
-					//Initialize renderer color
-					SDL_SetRenderDrawColor(gRenderer, 0xFF, 0xFF, 0xFF, 0xFF);
-				}
-			}
+			//Initialize renderer color
+			SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
 		}
-		SDL_GetKeyboardState(keyboard);
+		keyboard = SDL_GetKeyboardState(NULL);
+		SDL_AddEventWatch(ResizeHandler, nullptr);
 
 		return success;
+	}
+
+	static void DrawTexture(float windowWidth, float windowHeight) {
+		SDL_SetRenderTarget(renderer, NULL);
+		float scaleX = (float)windowWidth / SCREEN_WIDTH;
+		float scaleY = (float)windowHeight / SCREEN_HEIGHT;
+		float scale = std::min(scaleX, scaleY);  // Maintain aspect ratio
+
+		int scaledWidth = (int)(SCREEN_WIDTH * scale);
+		int scaledHeight = (int)(SCREEN_HEIGHT * scale);
+
+		int offsetX = (windowWidth - scaledWidth) / 2;
+		int offsetY = (windowHeight - scaledHeight) / 2;
+
+		SDL_FRect dstRect = { offsetX, offsetY, scaledWidth, scaledHeight };
+		SDL_RenderTexture(renderer, renderTexture, NULL, &dstRect);
+
+		SDL_RenderPresent(renderer);
+	}
+
+	static bool SDLCALL ResizeHandler(void* userdata, SDL_Event* event) {
+		if (event->type == SDL_EVENT_WINDOW_RESIZED) {
+			// For window events, SDL_Event's window field holds the details.
+			SDL_WindowEvent* wevent = &event->window;
+
+			DrawTexture(wevent->data1, wevent->data2);
+		}
+		// Return true to let the event continue to the normal event queue.
+		return true;
 	}
 
 	void SDLClose()
 	{
 		//Destroy window	
-		SDL_DestroyRenderer(gRenderer);
-		SDL_DestroyWindow(gWindow);
-		gWindow = NULL;
-		gRenderer = NULL;
+		SDL_DestroyRenderer(renderer);
+		SDL_DestroyWindow(window);
+		window = NULL;
+		renderer = NULL;
 		SDL_Quit();
 	}
 
 	//Screen dimension constants
-	const int SCREEN_WIDTH = 1920;
-	const int SCREEN_HEIGHT = 1080;
+	static const int SCREEN_WIDTH = 1920;
+	static const int SCREEN_HEIGHT = 1080;
 
 	//Keyboard
-	int* keyboard;
+	const bool* keyboard;
 
 	//The window we'll be rendering to
-	SDL_Window* gWindow = NULL;
+	static SDL_Window* window;
 
 	//The window renderer
-	SDL_Renderer* gRenderer = NULL;
+	static SDL_Renderer* renderer;
 
-	SDL_Color bground = { 110,58,80 };
+	static SDL_Texture* renderTexture;
+
+	SDL_Color bground = { 10,18,40 };
 
 	//SDLImage
 	std::unordered_map<std::string, SDL_Texture*> textures;
@@ -176,7 +189,7 @@ struct SDLton : Singleton {
 			else
 			{
 				//Create texture from surface pixels
-				newTexture = SDL_CreateTextureFromSurface(gRenderer, loadedSurface);
+				newTexture = SDL_CreateTextureFromSurface(renderer, loadedSurface);
 				if (newTexture == NULL)
 				{
 					printf("Unable to create texture from %s! SDL Error: %s\n", path.c_str(), SDL_GetError());
@@ -187,6 +200,7 @@ struct SDLton : Singleton {
 			}
 
 			textures[path] = newTexture;
+			SDL_SetTextureScaleMode(textures[path], SDL_SCALEMODE_NEAREST);
 		}
 	}
 
@@ -195,8 +209,19 @@ struct SDLton : Singleton {
 	}
 };
 
+SDL_Window* SDLton::window = SDL_CreateWindow("Asteroids", SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_RESIZABLE);
+SDL_Renderer* SDLton::renderer = SDL_CreateRenderer(SDLton::window, NULL);
+SDL_Texture* SDLton::renderTexture = SDL_CreateTexture(
+	SDLton::renderer,
+	SDL_PIXELFORMAT_RGBA8888,
+	SDL_TEXTUREACCESS_TARGET,
+	SDLton::SCREEN_WIDTH, SDLton::SCREEN_HEIGHT
+);
+
 struct Transform {
-	Vector2 pos;
+	Vector2 position;
+	Vector2 velocity;
+	float rotation;
 };
 
 struct SpriteRenderer {
@@ -204,12 +229,50 @@ struct SpriteRenderer {
 	std::string sprite;
 };
 
+class EventSystem : public System {
+	void Update() {
+		SDL_Event event;
+		while (SDL_PollEvent(&event)) {
+			if (event.type == SDL_EVENT_QUIT) {
+				QuitGame();
+			}
+		}
+	}
+};
+
+class MovementSystem : public System {
+	void Update() {
+		auto& sdl = GetPersistentSingleton<SDLton>();
+
+		for (auto object : ObjectsWith<Transform>()) {
+			auto& xform = object.GetComponent<Transform>();
+			if (sdl.keyboard[SDL_SCANCODE_RIGHT]) {
+				object.GetComponent<Transform>().rotation+=0.02;
+			}if (sdl.keyboard[SDL_SCANCODE_LEFT]) {
+				object.GetComponent<Transform>().rotation-=0.02;
+			}if (sdl.keyboard[SDL_SCANCODE_UP]) {
+				xform.velocity += Vector2{cosf((xform.rotation-90)*std::numbers::pi/180), sinf((xform.rotation-90)*std::numbers::pi/180)} * 0.00001;
+			}if (sdl.keyboard[SDL_SCANCODE_DOWN]) {
+				xform.velocity -= Vector2{ cosf((xform.rotation - 90) * std::numbers::pi / 180), sinf((xform.rotation - 90) * std::numbers::pi / 180) } *0.00001;
+			}
+
+			if (xform.velocity.mag() > 0.05) {
+				xform.velocity = Vector2::Unit(xform.velocity.angle())*0.05;
+			}
+
+			object.GetComponent<Transform>().position += object.GetComponent<Transform>().velocity;
+		}
+	}
+};
+
 class RenderSys : public System {
 	void Update() {
 		auto& sdl = GetPersistentSingleton<SDLton>();
+
+		SDL_SetRenderTarget(sdl.renderer, sdl.renderTexture);
 		
-		SDL_SetRenderDrawColor(sdl.gRenderer, sdl.bground.r, sdl.bground.g, sdl.bground.b, 255);
-		SDL_RenderClear(sdl.gRenderer);
+		SDL_SetRenderDrawColor(sdl.renderer, sdl.bground.r, sdl.bground.g, sdl.bground.b, 255);
+		SDL_RenderClear(sdl.renderer);
 
 		for (auto object : ObjectsWith<SpriteRenderer>()) {
 			auto& spriteRenderer = object.GetComponent<SpriteRenderer>();
@@ -217,26 +280,29 @@ class RenderSys : public System {
 
 			auto sprite = sdl.GetSprite(spriteRenderer.sprite);
 			const SDL_FRect rect = {(float)sprite.clip.x,(float)sprite.clip.y,(float)sprite.clip.w,(float)sprite.clip.h };
-			const SDL_FRect destRect = { rect.x + xform.pos.x,rect.y + xform.pos.y,rect.w*10,rect.h*10 };
-			const SDL_FPoint center = { 0,0 };
-			SDL_RenderTextureRotated(sdl.gRenderer, sprite.texture, &rect, &destRect,0, &center,SDL_FLIP_NONE);
+			const SDL_FRect destRect = { rect.x + xform.position.x,rect.y + xform.position.y,rect.w*4,rect.h*4 };
+			SDL_RenderTextureRotated(sdl.renderer, sprite.texture, &rect, &destRect,xform.rotation, NULL,SDL_FLIP_NONE);
 
 		}
 
-		SDL_RenderPresent(sdl.gRenderer);
+		int windowWidth, windowHeight;
+		SDL_GetWindowSize(sdl.window, &windowWidth, &windowHeight);
+		sdl.DrawTexture(windowWidth, windowHeight);
 	}
 };
 
 class AsteroidsScene : public Scene {
 	void Init() {
 		RegisterComponents<Transform, SpriteRenderer>();
-		RegisterSystems<RenderSys>();
+		RegisterSystems<EventSystem,MovementSystem,RenderSys>();
 
 		DefineObject<Transform,SpriteRenderer>("ship");
 
 		Object o = CreateObject("ship");
-		o.GetComponent<Transform>().pos = { 200,200 };
+		o.GetComponent<Transform>().position = { 200,200 };
+		o.GetComponent<Transform>().velocity = { 0,0 };
 		o.GetComponent<SpriteRenderer>().pos = { 0,0 };
+		o.GetComponent<Transform>().rotation = 0;
 		o.GetComponent<SpriteRenderer>().sprite = "ship";
 	}
 	void Quit() {
@@ -263,7 +329,7 @@ protected:
 	}
 };
 
-int main() {
+int main(int argc, char** argv) {
 	AsteroidsGame game;
 	game.Start("AsteroidsScene");
 
