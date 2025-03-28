@@ -1,4 +1,5 @@
 #include "SDL3/SDL.h"
+#include "SDL3/SDL_main.h"
 #include "SDL3_image/SDL_image.h"
 #include "SDL3_ttf/SDL_ttf.h"
 #include "ECSLib.h"
@@ -128,6 +129,7 @@ struct SDLton : Singleton {
 	void SDLClose()
 	{
 		//Destroy window	
+		TTF_CloseFont(font);
 		SDL_DestroyRenderer(renderer);
 		SDL_DestroyWindow(window);
 		window = NULL;
@@ -195,7 +197,7 @@ struct SDLton : Singleton {
 		}
 	}
 	SDL_Texture* LoadText(std::string textContent) {
-		SDL_Surface* text = TTF_RenderText_Blended(font, textContent.c_str(), 0, {255,255,255});
+		SDL_Surface* text = TTF_RenderText_Blended(font, textContent.c_str(),textContent.size(), SDL_Color{255,255,255,255});
 		SDL_Texture* texture = NULL;
 		if (text) {
 			texture = SDL_CreateTextureFromSurface(renderer, text);
@@ -215,19 +217,25 @@ struct SDLton : Singleton {
 };
 
 struct Transform {
+	Transform() {
+		position = Vector2();
+		velocity = Vector2();
+		rotation = 0;
+	}
+
 	Vector2 position = {0,0};
 	Vector2 velocity = {0,0};
 	float rotation=0;
 };
 
 struct SpriteRenderer {
-	std::string sprite;
+	std::string sprite="";
 };
 
 struct TextRenderer {
-	std::string message;
-	std::string currentMessage;
-	SDL_Texture* texture;
+	std::string message="";
+	std::string currentMessage="";
+	SDL_Texture* texture=nullptr;
 	bool visible = true;
 };
 
@@ -236,15 +244,20 @@ struct DestroyTimer {
 };
 
 struct Asteroid {
-	int size;
+	int size=0;
 };
 
 struct Score {
-	int score;
+	int score=0;
 };
 
 struct InstructionsTimer {
-	int timer;
+	int timer=0;
+};
+
+struct Ship {
+	int shootTimer=0;
+	bool spaceHeld = false;
 };
 
 class EntityCreator : public GInterface {
@@ -270,10 +283,26 @@ public:
 
 class EventSystem : public System {
 	void Update() {
+		auto& sdl = GetPersistentSingleton<SDLton>();
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_EVENT_QUIT) {
 				QuitGame();
+			}
+			else if (event.type == SDL_EVENT_KEY_DOWN) {
+				// Check if F11 was pressed (use SDL_SCANCODE_F11 or SDLK_F11)
+				if (event.key.scancode == SDL_SCANCODE_F11) {
+					// Get current fullscreen state
+					Uint32 flags = SDL_GetWindowFlags(sdl.window);
+					if (flags & SDL_WINDOW_FULLSCREEN) {
+						// If currently fullscreen, switch to windowed mode
+						SDL_SetWindowFullscreen(sdl.window, 0);
+					}
+					else {
+						// Else, set fullscreen desktop mode
+						SDL_SetWindowFullscreen(sdl.window, SDL_WINDOW_FULLSCREEN);
+					}
+				}
 			}
 		}
 	}
@@ -287,16 +316,20 @@ class AsteroidSpawnSystem : public System {
 	int stageNum = 1;
 	void Update() {
 		if (nextAsteroidCounter == nextAsteroidAt) {
-			float xVel = (float)(rand() % 50 - 25) / 10;
-			float yVel = (float)(rand() % 50 - 25) / 10;
+			float xVel = 0; 
+			float yVel = 0;
+			while (xVel == 0 || yVel == 0) {
+				xVel = (float)(rand() % 50 - 25) / 10;
+				yVel = (float)(rand() % 50 - 25) / 10;
+			}
 			int size = rand() % 3;
-			GetInterface<EntityCreator>().CreateAsteroid({ -500,-500 }, {xVel,yVel},size);
+			GetInterface<EntityCreator>().CreateAsteroid({ -500,-500 }, { xVel,yVel }, size);
 			nextAsteroidCounter = 0;
 			nextStageCounter++;
 		}
 		if (nextStageCounter == nextStageAt) {
-			nextAsteroidAt = nextAsteroidAt * 3 / 4;
-			nextStageAt = nextStageAt * 4/3;
+			nextAsteroidAt = std::ceil(nextAsteroidAt * 3 / 4);
+			nextStageAt = std::ceil(nextStageAt * 4/3);
 			nextStageCounter = 0;
 			Object i = CreateObject("instructions");
 			i.GetComponent<Transform>().position = { 1920 / 2 - 110,1080 / 2 };
@@ -353,22 +386,33 @@ class AsteroidContainmentSystem : public System {
 				size = 16;
 			}
 			
-			if (xform.position.x > -100 && xform.position.x < 2000 && xform.position.y > -100 && xform.position.y < 1100) {
+			if (xform.position.x > -150 && xform.position.x < 2050 && xform.position.y > -150 && xform.position.y < 1250) {
 				for (auto ship : ObjectsWith("ship")) {
 					auto& shipxform = ship.GetComponent<Transform>();
 
-					if ((shipxform.position - xform.position).mag() < size+32) {
+					if ((shipxform.position - xform.position).mag() < size+38) {
 						DestroyObject(ship);
 						Object i = CreateObject("instructions");
 						i.GetComponent<Transform>().position = { 1920 / 2 - 160,1080 / 2 };
 						i.GetComponent<TextRenderer>().message = "GAME OVER";
-						i.GetComponent<InstructionsTimer>().timer = 300;
+						i.GetComponent<InstructionsTimer>().timer = 1000;
 						AddTag(i, "instructions");
+						continue;
 					}
 				}
 				for (auto bullet : ObjectsWith("bullet")) {
 					auto& bulletxform = bullet.GetComponent<Transform>();
 					if ((bulletxform.position - xform.position).mag() < size+16) {
+						for (auto ship : ObjectsWith("ship")) {
+							auto& shipxform = ship.GetComponent<Transform>();
+							auto& shipcomp = ship.GetComponent<Ship>();
+							shipcomp.shootTimer = 0;
+							float dist = (shipxform.position - bulletxform.position).mag();
+							if (dist < 600) {
+								shipxform.velocity +=
+									Vector2::Unit((shipxform.position - bulletxform.position).angle()) * 0.2 / powf(dist/500, 2);
+							}
+						}
 						Object e = CreateObject("explosion");
 						e.GetComponent<Transform>().position = xform.position;
 						e.GetComponent<SpriteRenderer>().sprite = "explosion";
@@ -409,6 +453,7 @@ class InstructionsSystem : public System {
 				i.timer--;
 			}
 			else {
+				SDL_DestroyTexture(tx.texture);
 				if (tx.message == "Press UP, DOWN, LEFT, RIGHT to fly.") {
 					Object i = CreateObject("instructions");
 					i.GetComponent<Transform>().position = { 1920 / 2 - 350,1080 / 2 };
@@ -438,12 +483,14 @@ class BulletSystem : public System {
 };
 
 class MovementSystem : public System {
-	int asteroidShootTimer = 0;
 	void Update() {
 		auto& sdl = GetPersistentSingleton<SDLton>();
 
 		for (auto object : ObjectsWith("ship") ){
 			auto& xform = object.GetComponent<Transform>();
+			auto& sr = object.GetComponent<SpriteRenderer>();
+			auto& ship = object.GetComponent<Ship>();
+			sr.sprite = "ship";
 			if (sdl.keyboard[SDL_SCANCODE_RIGHT]|| sdl.keyboard[SDL_SCANCODE_D]) {
 				object.GetComponent<Transform>().rotation+=4;
 			}
@@ -452,18 +499,11 @@ class MovementSystem : public System {
 			}
 			if (sdl.keyboard[SDL_SCANCODE_UP]|| sdl.keyboard[SDL_SCANCODE_W]) {
 				xform.velocity += Vector2{cosf((xform.rotation-90)*std::numbers::pi/180), sinf((xform.rotation-90)*std::numbers::pi/180)} * 0.2;
+				sr.sprite = "ship_accel";
 			}
 			if (sdl.keyboard[SDL_SCANCODE_DOWN]|| sdl.keyboard[SDL_SCANCODE_S]) {
 				xform.velocity -= Vector2{ cosf((xform.rotation - 90) * std::numbers::pi / 180), sinf((xform.rotation - 90) * std::numbers::pi / 180) } *0.2;
-			}
-			if (sdl.keyboard[SDL_SCANCODE_SPACE]&&asteroidShootTimer==0) {
-				xform.velocity -= Vector2{ cosf((xform.rotation - 90) * std::numbers::pi / 180), 
-					sinf((xform.rotation - 90) * std::numbers::pi / 180) } *0.8;
-				GetInterface<EntityCreator>().CreateBullet(xform.position,xform.velocity,xform.rotation);
-				asteroidShootTimer = 60;
-			}
-			else if (asteroidShootTimer > 0) {
-				asteroidShootTimer--;
+				sr.sprite = "ship_reverse";
 			}
 
 			if (xform.velocity.mag() > 7) {
@@ -477,6 +517,28 @@ class MovementSystem : public System {
 
 			xform.position.x = std::clamp(xform.position.x, (float)48*2, (float)1920 - 48*2);
 			xform.position.y = std::clamp(xform.position.y, (float)48 *2, (float)1080 - 48*2);
+
+			if (ship.shootTimer > 0) {
+				sr.sprite = sr.sprite == "ship" ? "ship_reloading" :
+					sr.sprite == "ship_accel" ? "ship_accel_reloading" :
+					"ship_reverse_reloading";
+			}
+
+			if (sdl.keyboard[SDL_SCANCODE_SPACE] && ship.shootTimer == 0 && !ship.spaceHeld) {
+				xform.velocity -= Vector2{ cosf((xform.rotation - 90) * std::numbers::pi / 180),
+					sinf((xform.rotation - 90) * std::numbers::pi / 180) } *0.8;
+				GetInterface<EntityCreator>().CreateBullet(xform.position, xform.velocity, xform.rotation);
+				ship.shootTimer = 60;
+			}
+			else if (ship.shootTimer > 0) {
+				ship.shootTimer--;
+			}
+			if (sdl.keyboard[SDL_SCANCODE_SPACE]) {
+				ship.spaceHeld = true;
+			}
+			else {
+				ship.spaceHeld = false;
+			}
 		}
 	}
 };
@@ -521,8 +583,9 @@ class RenderSys : public System {
 			auto& xform = ship.GetComponent<Transform>();
 
 			auto sprite = sdl.GetSprite(spriteRenderer.sprite);
-			const SDL_FRect rect = { (float)sprite.clip.x,(float)sprite.clip.y,(float)sprite.clip.w,(float)sprite.clip.h };
-			const SDL_FRect destRect = { xform.position.x - rect.w * 2,xform.position.y - rect.h * 2,rect.w * 4,rect.h * 4 };
+			SDL_FRect rect = { (float)sprite.clip.x,(float)sprite.clip.y,(float)sprite.clip.w,(float)sprite.clip.h };
+			SDL_FRect destRect = { xform.position.x - rect.w * 2,xform.position.y - rect.h * 2,rect.w * 4,rect.h * 4 };
+			//SDL_FPoint center = { 96,100 };
 			SDL_RenderTextureRotated(sdl.renderer, sprite.texture, &rect, &destRect, xform.rotation, NULL, SDL_FLIP_NONE);
 		}
 		for (auto explosion : ObjectsWith("explosion")) {
@@ -545,13 +608,18 @@ class TextRenderSystem : public System {
 			auto& tx = object.GetComponent<TextRenderer>();
 			if (tx.visible) {
 				if (tx.message != tx.currentMessage) {
-					if (tx.texture) SDL_DestroyTexture(tx.texture);
+					if (tx.texture) {
+						SDL_DestroyTexture(tx.texture);
+						tx.texture = nullptr;
+					}
 					tx.texture = sdl.LoadText(tx.message);
 					tx.currentMessage = tx.message;
 				}
 
 				auto& xform = object.GetComponent<Transform>();
-				SDL_FRect dstRect = { xform.position.x, xform.position.y, tx.texture->w, tx.texture->h };
+				float w, h;
+				SDL_GetTextureSize(tx.texture, &w,&h);
+				SDL_FRect dstRect = { xform.position.x, xform.position.y, w, h };
 				SDL_RenderTexture(sdl.renderer, tx.texture, NULL, &dstRect);
 			}
 		}
@@ -578,12 +646,13 @@ class TextRenderSystem : public System {
 
 class AsteroidsScene : public Scene {
 	void Init() {
-		RegisterComponents<Transform, SpriteRenderer,Asteroid,DestroyTimer,TextRenderer,Score,InstructionsTimer>();
+		RegisterComponents<Transform, SpriteRenderer,Asteroid,DestroyTimer,
+			TextRenderer,Score,InstructionsTimer,Ship>();
 		RegisterSystems<EventSystem,AsteroidSpawnSystem,AsteroidContainmentSystem,ScoreSystem,
 			DestroySystem,BulletSystem,MovementSystem,PhysicsSystem,InstructionsSystem,RenderSys,TextRenderSystem>();
 		CreateInterfaces<EntityCreator>();
 
-		DefineObject<Transform,SpriteRenderer>("ship");
+		DefineObject<Transform,SpriteRenderer,Ship>("ship");
 		DefineObject<Transform,SpriteRenderer,Asteroid>("asteroid");
 		DefineObject<Transform,SpriteRenderer>("bullet");
 		DefineObject<Transform,SpriteRenderer,DestroyTimer>("explosion");
@@ -622,6 +691,11 @@ protected:
 		// Access and initialize the renderer
 		sdl.SDLInit();
 		sdl.CreateSprite("ship", "Assets/ship-a1.png", { 0,0,48,48 });
+		sdl.CreateSprite("ship_accel", "Assets/ship-a2.png", { 0,0,48,48 });
+		sdl.CreateSprite("ship_reverse", "Assets/ship-a3.png", { 0,0,48,48 });
+		sdl.CreateSprite("ship_reloading", "Assets/ship-a4.png", { 0,0,48,48 });
+		sdl.CreateSprite("ship_accel_reloading", "Assets/ship-a5.png", { 0,0,48,48 });
+		sdl.CreateSprite("ship_reverse_reloading", "Assets/ship-a6.png", { 0,0,48,48 });
 		sdl.CreateSprite("big", "Assets/big-a.png", { 0,0,48,48 });
 		sdl.CreateSprite("med", "Assets/med-a.png", { 0,0,48,48 });
 		sdl.CreateSprite("small", "Assets/small-a.png", { 0,0,48,48 });

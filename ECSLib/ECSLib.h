@@ -18,7 +18,6 @@ class Singleton {
 class ICompArray {
 public:
 	virtual void CreateComponent(int o) = 0;
-	virtual void CreateComponent(int o, std::string presetName) = 0;
 	virtual void DestroyComponent(int o) = 0;
 
 protected:
@@ -27,9 +26,9 @@ protected:
 };
 template <class T> class CompArray : public ICompArray {
 public:
-	void CreateComponent(int o, T comp) {
+	void CreateComponent(int o) {
 		if (availableIDs.empty()) {
-			components.push_back(comp);
+			components.push_back(T());
 			objectIDs.insert({ o,components.size() - 1 });
 		}
 		else {
@@ -38,8 +37,7 @@ public:
 			availableIDs.pop();
 		}
 	}
-	void CreateComponent(int o, std::string presetName) { CreateComponent(o, objectPresets[presetName]); }
-	void CreateComponent(int o) { CreateComponent(o, T()); }
+	//void CreateComponent(int o) { CreateComponent(o); }
 
 	void DestroyComponent(int o) {
 		GetComponent(o) = T();
@@ -51,15 +49,10 @@ public:
 		return components[objectIDs[o]];
 	}
 
-	void AddPreset(std::string presetName, T preset) {
-		objectPresets.insert({ presetName,preset });
-	}
-
 	int size() { return availableIDs.size(); }
 
 private:
 	std::vector<T> components;
-	std::unordered_map<std::string, T> objectPresets;
 };
 
 class CompArrays {
@@ -188,7 +181,7 @@ public:
 		
 		for (int i = 0; i < signature.size(); i++) {
 			if (signature[i]) {
-				GetComponentArray(i)->CreateComponent(o,name);
+				GetComponentArray(i)->CreateComponent(o);
 			}
 		}
 		for (int i = 0; i < groupSigs.size(); i++) {
@@ -350,7 +343,7 @@ protected:
 	}
 
 	void DestroyObject(Object o) {
-		gdata->DestroyObject(o);
+		deleteQueue.insert(o);
 	}
 
 	template <class T> T& GetInterface() {
@@ -378,6 +371,7 @@ protected:
 private:
 	GameData* gdata;
 	InterfaceStorer* interfaces;
+	std::set<Object> deleteQueue;
 	friend class InterfaceStorer;
 	friend class System;
 	friend class Scene;
@@ -419,6 +413,10 @@ public:
 		while (!quit) {
 			for (int i = 0; i < defaultSystems.size(); i++) {
 				defaultSystems[i]->Update();
+				while (!defaultSystems[i]->deleteQueue.empty()) {
+					gameData.DestroyObject(*(defaultSystems[i]->deleteQueue.begin()));
+					defaultSystems[i]->deleteQueue.erase(defaultSystems[i]->deleteQueue.begin());
+				}
 			}
 			if (gameData.eventInterface.ShouldQuit() || gameData.eventInterface.ShouldSwitchScene().first) {
 				quit = true;
