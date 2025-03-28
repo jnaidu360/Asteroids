@@ -217,14 +217,9 @@ struct SDLton : Singleton {
 };
 
 struct Transform {
-	Transform() {
-		position = Vector2();
-		velocity = Vector2();
-		rotation = 0;
-	}
-
 	Vector2 position = {0,0};
 	Vector2 velocity = {0,0};
+	float angularVelocity = 0;
 	float rotation=0;
 };
 
@@ -492,10 +487,13 @@ class MovementSystem : public System {
 			auto& ship = object.GetComponent<Ship>();
 			sr.sprite = "ship";
 			if (sdl.keyboard[SDL_SCANCODE_RIGHT]|| sdl.keyboard[SDL_SCANCODE_D]) {
-				object.GetComponent<Transform>().rotation+=4;
+				object.GetComponent<Transform>().angularVelocity+=0.5;
 			}
 			if (sdl.keyboard[SDL_SCANCODE_LEFT]|| sdl.keyboard[SDL_SCANCODE_A]) {
-				object.GetComponent<Transform>().rotation-=4;
+				object.GetComponent<Transform>().angularVelocity -= 0.5;
+			}
+			if ((sdl.keyboard[SDL_SCANCODE_LEFT] || sdl.keyboard[SDL_SCANCODE_A]) == (sdl.keyboard[SDL_SCANCODE_RIGHT] || sdl.keyboard[SDL_SCANCODE_D])) {
+				xform.angularVelocity *= 0.85;
 			}
 			if (sdl.keyboard[SDL_SCANCODE_UP]|| sdl.keyboard[SDL_SCANCODE_W]) {
 				xform.velocity += Vector2{cosf((xform.rotation-90)*std::numbers::pi/180), sinf((xform.rotation-90)*std::numbers::pi/180)} * 0.2;
@@ -517,6 +515,10 @@ class MovementSystem : public System {
 
 			xform.position.x = std::clamp(xform.position.x, (float)48*2, (float)1920 - 48*2);
 			xform.position.y = std::clamp(xform.position.y, (float)48 *2, (float)1080 - 48*2);
+
+			xform.angularVelocity = std::clamp(xform.angularVelocity, (float) -5, (float)5);
+
+			xform.rotation += xform.angularVelocity;
 
 			if (ship.shootTimer > 0) {
 				sr.sprite = sr.sprite == "ship" ? "ship_reloading" :
