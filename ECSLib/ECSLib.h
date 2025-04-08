@@ -9,12 +9,13 @@
 #include <set>
 #include <boost/dynamic_bitset.hpp>
 
-//Singleton
+// Dummy class to be derived by singleton components
 class Singleton {
 
 };
 
-//Comp array
+// Component Array Class:
+// Stores an array of components and provides functions for accessing them.
 class ICompArray {
 public:
 	virtual void CreateComponent(int o) = 0;
@@ -33,11 +34,10 @@ public:
 		}
 		else {
 			components[availableIDs.front()] = T();
-			objectIDs.insert({ o,availableIDs.front()});
+			objectIDs.insert({ o,availableIDs.front() });
 			availableIDs.pop();
 		}
 	}
-	//void CreateComponent(int o) { CreateComponent(o); }
 
 	void DestroyComponent(int o) {
 		GetComponent(o) = T();
@@ -55,9 +55,12 @@ private:
 	std::vector<T> components;
 };
 
+// CompArrays Class:
+// A container for the component arrays. Provides functions for accessing a component
+// array of a given type as well as its contents.
 class CompArrays {
 public:
-	template<class...Ts> typename std::enable_if<sizeof...(Ts) == 0>::type RegisterComponent() { }
+	template<class...Ts> typename std::enable_if<sizeof...(Ts) == 0>::type RegisterComponent() {}
 	template<class T, class...Ts> void RegisterComponent() {
 		compIDs[typeid(T).name()] = nextCompID;
 		nextCompID++;
@@ -91,6 +94,8 @@ private:
 	int nextCompID = 0;
 };
 
+// Object Class:
+// Represents an object in the game, this class is used to access its components.
 class Object {
 public:
 	bool operator==(const Object& other) const {
@@ -116,6 +121,9 @@ private:
 	friend class GameData;
 };
 
+// EventInterface Class:
+// Not to be confused with the user-derived GInterface, this class tracks
+// whether scenes should be switched or the game should be exited.
 class EventInterface {
 public:
 	void QuitGame() {
@@ -128,7 +136,7 @@ public:
 		scene = _scene;
 		switchScene = true;
 	}
-	std::pair<bool,std::string> ShouldSwitchScene() {
+	std::pair<bool, std::string> ShouldSwitchScene() {
 		return { switchScene,scene };
 	}
 	void Reset() {
@@ -142,9 +150,13 @@ private:
 	std::string scene;
 };
 
+// GameData Class:
+// This class stores the data for a game including its component arrys, objects and groups 
+// of objects, singletons, persistent singletons, and object definitions. This is the core
+// of the game.
 class GameData {
 public:
-	template<class...Ts> typename std::enable_if<sizeof...(Ts) == 0>::type CreateSingletons() { }
+	template<class...Ts> typename std::enable_if<sizeof...(Ts) == 0>::type CreateSingletons() {}
 	template<class T, class...Ts> void CreateSingletons() {
 		singletons[typeid(T).name()] = std::make_shared<T>();
 		CreateSingletons<Ts...>();
@@ -159,7 +171,7 @@ public:
 
 	template<class...Ts> void RegisterComponent() { compArrays.RegisterComponent<Ts...>(); }
 
-	template<class...Ts> typename std::enable_if<sizeof...(Ts) == 0>::type DefineObject(std::string name) { }
+	template<class...Ts> typename std::enable_if<sizeof...(Ts) == 0>::type DefineObject(std::string name) {}
 	template<class T, class...Ts> void DefineObject(std::string name) {
 		objectDefinitions[name].resize(compArrays.NumberComponents());
 		objectDefinitions[name].set(GetCompID<T>());
@@ -171,14 +183,14 @@ public:
 		boost::dynamic_bitset<> signature = objectDefinitions[name];
 		if (availableObjIDs.empty()) {
 			objectSignatures.push_back(signature);
-			o = objectSignatures.size()-1;
+			o = objectSignatures.size() - 1;
 		}
 		else {
 			o = availableObjIDs.front();
 			availableObjIDs.pop();
 			objectSignatures[o] = signature;
 		}
-		
+
 		for (int i = 0; i < signature.size(); i++) {
 			if (signature[i]) {
 				GetComponentArray(i)->CreateComponent(o);
@@ -229,7 +241,7 @@ public:
 			groups.push_back(std::set<Object>());
 			groupIDs[sig] = nextGroupID;
 			for (int i = 0; i < objectSignatures.size(); i++) {
-				if (ObjInGroup(i,nextGroupID)) {
+				if (ObjInGroup(i, nextGroupID)) {
 					groups[nextGroupID].insert(ConstructObject(i));
 				}
 			}
@@ -307,13 +319,16 @@ private:
 	std::unordered_map<boost::dynamic_bitset<>, bool> groupInit;
 	std::vector<std::set<Object>> groups;
 	//Tags
-	std::unordered_map<std::string,std::set<Object>> tags;
+	std::unordered_map<std::string, std::set<Object>> tags;
 
 	friend class Game;
 };
 
+// Forward-declare the GInterface class so it can reference pointers to itself
 class GInterface;
 
+// InterfaceStorer Class:
+// Class for storing and accessing the interfaces used by the game.
 class InterfaceStorer {
 public:
 	template<class...Ts> typename std::enable_if<sizeof...(Ts) == 0>::type CreateInterfaces(GameData* gdata) {}
@@ -332,6 +347,8 @@ private:
 	std::unordered_map<const char*, std::shared_ptr<GInterface>> interfaces;
 };
 
+// Interface Class:
+// Derived by the user to access and modify the game state.
 class GInterface {
 protected:
 	Object CreateObject(std::string name) {
@@ -377,7 +394,9 @@ private:
 	friend class Scene;
 };
 
-//System
+// System Class:
+// A class with single update function that can be called to update the game state in a 
+// particular way. To be derived by the user and registered in a scene.
 class System : public GInterface {
 public:
 	virtual void Update() {};
@@ -405,6 +424,9 @@ private:
 	friend class Scene;
 };
 
+// Scene Class:
+// The Scene is where the user-derived types are to be registered and the initial objects are created.
+// A game can consist of multiple scenes that are switched between.
 class Scene {
 public:
 	virtual void Start() {
@@ -453,7 +475,7 @@ public:
 
 protected:
 	virtual void Init() = 0;
-	virtual void Quit() = 0;
+	virtual void Quit() { };
 
 	template <class T> T& GetSingleton() {
 		return gameData.GetSingleton<T>();
@@ -518,7 +540,7 @@ protected:
 	}
 
 private:
-	std::unordered_map<std::string,std::vector<std::shared_ptr<System>>> systems;
+	std::unordered_map<std::string, std::vector<std::shared_ptr<System>>> systems;
 	std::vector<std::shared_ptr<System>> defaultSystems;
 	InterfaceStorer interfaces;
 	GameData gameData;
@@ -526,6 +548,9 @@ private:
 	friend class Game;
 };
 
+// Game Class:
+// The highest-level class, used to register scenes so that they can switch between each other. This is where 
+// the game is started from.
 class Game {
 public:
 	Game() {
@@ -548,7 +573,7 @@ public:
 	}
 protected:
 	virtual void Init() = 0;
-	virtual void Quit() {};
+	virtual void Quit() { };
 	template<class T>
 	void RegisterScene(std::string name) {
 		scenes[name] = std::make_shared<T>();
@@ -561,7 +586,7 @@ protected:
 
 	template<class...Ts> typename std::enable_if<sizeof...(Ts) == 0>::type CreatePersistentSingletons() {}
 	template<class T, class...Ts> void CreatePersistentSingletons() {
-		persistentSingletons->insert({typeid(T).name(),std::make_shared<T>() });
+		persistentSingletons->insert({ typeid(T).name(),std::make_shared<T>() });
 		CreatePersistentSingletons<Ts...>();
 	}
 	template <class T> T& GetPersistentSingleton() {

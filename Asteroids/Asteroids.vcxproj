@@ -145,6 +145,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Singletons.cpp" />
+    <ClCompile Include="Systems.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Assets\ship-a1.png">
@@ -161,7 +163,12 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Components.h" />
+    <ClInclude Include="Interfaces.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="Singletons.h" />
+    <ClInclude Include="Systems.h" />
+    <ClInclude Include="Vector2.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Asteroids.rc" />

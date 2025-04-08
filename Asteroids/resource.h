@@ -2,6 +2,7 @@
 // Microsoft Visual C++ generated include file.
 // Used by Asteroids.rc
 //
+//This file is used to provide icon for exe
 #define IDI_ICON1                       101
 
 // Next default values for new objects
